@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const express = require("express");
 const { config } = require("./config");
-const { MercadoPagoClient, externalReference, newOrderId, notificationType, paymentIdFromNotification } = require("./mercadopago");
+const { MercadoPagoClient, externalReference, newOrderId, notificationType, paymentIdFromNotification, verifyWebhookSignature } = require("./mercadopago");
 const { deliveryCaption, paymentCreated, pendingStatus, welcome } = require("./messages");
 const { OrderStore } = require("./store");
 const { TelegramClient, buyKeyboard, startKeyboard } = require("./telegram");
@@ -195,6 +195,7 @@ app.get("/health", (_req, res) => {
     price: config.productPrice,
     ebookExists: fs.existsSync(config.ebookPath),
     publicBaseUrlConfigured: Boolean(config.publicBaseUrl),
+    mercadoPagoWebhookSignatureEnabled: Boolean(config.mercadoPagoWebhookSecret),
   });
 });
 
@@ -224,6 +225,13 @@ app.post(`/telegram/${config.telegramWebhookSecret}`, async (req, res) => {
 });
 
 app.post("/webhooks/mercadopago", async (req, res) => {
+  const signature = verifyWebhookSignature(req, config.mercadoPagoWebhookSecret);
+  if (!signature.ok) {
+    console.warn("Webhook Mercado Pago recusado por assinatura invalida", signature);
+    res.sendStatus(401);
+    return;
+  }
+
   res.sendStatus(200);
   try {
     const type = notificationType(req);

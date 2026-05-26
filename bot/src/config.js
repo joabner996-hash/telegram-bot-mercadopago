@@ -37,6 +37,7 @@ const config = {
   telegramToken: required("TELEGRAM_BOT_TOKEN"),
   telegramWebhookSecret: required("TELEGRAM_WEBHOOK_SECRET"),
   mercadoPagoAccessToken: required("MERCADOPAGO_ACCESS_TOKEN"),
+  mercadoPagoWebhookSecret: optional("MERCADOPAGO_WEBHOOK_SECRET"),
   mercadoPagoSandbox: bool("MP_USE_SANDBOX", true),
   publicBaseUrl: optional("PUBLIC_BASE_URL").replace(/\/+$/, ""),
   productName: optional("PRODUCT_NAME", "Manual de Sobrevivencia: Edicao Cozinha"),

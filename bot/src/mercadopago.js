@@ -97,10 +97,51 @@ function notificationType(req) {
   return req.body?.type || req.body?.topic || req.query?.type || req.query?.topic || "";
 }
 
+function signatureParts(header) {
+  return String(header || "")
+    .split(",")
+    .map((part) => part.trim().split("="))
+    .reduce((acc, [key, value]) => {
+      if (key && value) acc[key] = value;
+      return acc;
+    }, {});
+}
+
+function timingSafeEqualHex(a, b) {
+  const left = Buffer.from(String(a || ""), "hex");
+  const right = Buffer.from(String(b || ""), "hex");
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function verifyWebhookSignature(req, secret) {
+  if (!secret) return { ok: true, skipped: true };
+
+  const xSignature = req.get("x-signature");
+  const xRequestId = req.get("x-request-id");
+  const dataId = req.query?.["data.id"] || req.body?.data?.id || req.body?.id || req.query?.id;
+  const { ts, v1 } = signatureParts(xSignature);
+
+  if (!xSignature || !xRequestId || !dataId || !ts || !v1) {
+    return { ok: false, reason: "missing_signature_fields" };
+  }
+
+  const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(manifest)
+    .digest("hex");
+
+  return {
+    ok: timingSafeEqualHex(expected, v1),
+    reason: "signature_mismatch",
+  };
+}
+
 module.exports = {
   MercadoPagoClient,
   externalReference,
   newOrderId,
   notificationType,
   paymentIdFromNotification,
+  verifyWebhookSignature,
 };

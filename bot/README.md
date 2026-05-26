@@ -24,6 +24,7 @@ Copy-Item .\bot\.env.example .\bot\.env
 TELEGRAM_BOT_TOKEN=token_novo_do_bot
 TELEGRAM_WEBHOOK_SECRET=texto_grande_aleatorio
 MERCADOPAGO_ACCESS_TOKEN=access_token_do_mercado_pago
+MERCADOPAGO_WEBHOOK_SECRET=assinatura_secreta_do_webhook
 MP_USE_SANDBOX=true
 PUBLIC_BASE_URL=https://sua-url-publica
 PRODUCT_PRICE=8.99
@@ -59,6 +60,7 @@ No painel do Mercado Pago, configure:
 - URL de teste: `https://sua-url-publica/webhooks/mercadopago`
 - URL de produção: `https://sua-url-publica/webhooks/mercadopago`
 - Evento/tópico: `Pagamentos` ou `payment`
+- Assinatura secreta: copie a chave exibida pelo Mercado Pago para `MERCADOPAGO_WEBHOOK_SECRET`
 
 O bot também envia `notification_url` em cada pagamento criado, então essa URL acompanha cada preferência.
 
