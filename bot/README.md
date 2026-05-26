@@ -1,82 +1,98 @@
-# Bot de venda do ebook no Telegram
+# Loja do ebook com Mercado Pago
 
-Este bot vende o PDF `Manual de Sobrevivência: Edição Cozinha` pelo Mercado Pago e entrega o arquivo automaticamente no Telegram quando o pagamento for aprovado.
+Este app vende o PDF `Manual de Sobrevivência: Edição Cozinha` em uma página web, recebe confirmação do Mercado Pago por webhook e libera o download seguro no próprio site.
 
-## Fluxo
+O bot do Telegram continua no código como opção secundária, mas o fluxo principal agora é site + checkout + download.
 
-1. Cliente chama o bot e toca em `Comprar ebook`.
-2. O bot cria uma preferência no Mercado Pago com um `external_reference` único.
-3. O cliente paga pelo Checkout Pro.
-4. O Mercado Pago chama `POST /webhooks/mercadopago`.
-5. O bot consulta o pagamento, valida valor/moeda/status e envia o PDF pelo Telegram.
+## Fluxo principal
 
-## Configuração local
+1. Cliente acessa a página inicial.
+2. Informa nome e e-mail.
+3. O app cria um pedido com `external_reference` único.
+4. O Mercado Pago abre o checkout.
+5. O Mercado Pago chama `POST /webhooks/mercadopago`.
+6. O app consulta o pagamento e valida status, valor e moeda.
+7. Se aprovado, a página `/obrigado?order_id=...` libera um botão de download.
+8. O PDF sai por `/download/:token`, sem expor o caminho real do arquivo.
 
-1. Copie o arquivo de exemplo:
-
-```powershell
-Copy-Item .\bot\.env.example .\bot\.env
-```
-
-2. Edite `bot/.env`:
+## Variáveis de ambiente
 
 ```env
-TELEGRAM_BOT_TOKEN=token_novo_do_bot
-TELEGRAM_WEBHOOK_SECRET=texto_grande_aleatorio
+PORT=3000
+NODE_ENV=production
+
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+
 MERCADOPAGO_ACCESS_TOKEN=access_token_do_mercado_pago
 MERCADOPAGO_WEBHOOK_SECRET=assinatura_secreta_do_webhook
 MP_USE_SANDBOX=true
-PUBLIC_BASE_URL=https://sua-url-publica
+
+PUBLIC_BASE_URL=https://seu-dominio-publico
+
+PRODUCT_NAME=Manual de Sobrevivência: Edição Cozinha
 PRODUCT_PRICE=8.99
+PRODUCT_CURRENCY=BRL
+EBOOK_PATH=output/manual_sobrevivencia_edicao_cozinha.pdf
+SUPPORT_URL=https://t.me/MSCoz_bot
+ORDERS_PATH=/data/orders.json
 ```
 
-3. Instale dependências e rode:
+Se ainda não tiver a assinatura secreta do Mercado Pago, deixe `MERCADOPAGO_WEBHOOK_SECRET` sem valor. Preencha depois que o painel do Mercado Pago mostrar a chave.
 
-```powershell
-npm install
+## Endpoints
+
+- `GET /` - página de venda
+- `POST /comprar` - cria pedido e redireciona para o checkout
+- `POST /recuperar` - recupera a compra pelo e-mail
+- `GET /obrigado?order_id=...` - mostra status e libera download se aprovado
+- `GET /pedido/:orderId` - consulta status do pedido
+- `GET /download/:token` - entrega o PDF se o pedido estiver aprovado
+- `POST /webhooks/mercadopago` - recebe notificações do Mercado Pago
+- `GET /health` - health check para Railway
+
+## Railway
+
+Use:
+
+```text
 npm run bot
 ```
 
-## Webhooks
+Para não perder pedidos em redeploys, crie um Volume no Railway montado em:
 
-### Telegram
-
-Depois que o app tiver uma URL pública HTTPS:
-
-```powershell
-npm run bot:setup-webhook
+```text
+/data
 ```
 
-Para conferir:
+E configure:
 
-```powershell
-npm run bot:check-webhook
+```env
+ORDERS_PATH=/data/orders.json
 ```
 
-### Mercado Pago
+Configure no Mercado Pago:
 
-No painel do Mercado Pago, configure:
+```text
+https://SEU-DOMINIO/webhooks/mercadopago
+```
 
-- URL de teste: `https://sua-url-publica/webhooks/mercadopago`
-- URL de produção: `https://sua-url-publica/webhooks/mercadopago`
-- Evento/tópico: `Pagamentos` ou `payment`
-- Assinatura secreta: copie a chave exibida pelo Mercado Pago para `MERCADOPAGO_WEBHOOK_SECRET`
+Evento/tópico:
 
-O bot também envia `notification_url` em cada pagamento criado, então essa URL acompanha cada preferência.
+```text
+Pagamentos / payment
+```
 
-## Hospedagem recomendada
+Depois de trocar para produção:
 
-Para começar com pouco atrito, use Railway:
-
-- Ele gera HTTPS automaticamente.
-- Permite variáveis de ambiente.
-- Roda Node.js sem precisar configurar servidor manualmente.
-
-Para produção mais estável e barata no longo prazo, uma VPS pequena com Node.js + PM2 também funciona muito bem.
+```env
+MP_USE_SANDBOX=false
+MERCADOPAGO_ACCESS_TOKEN=token_de_producao
+```
 
 ## Segurança
 
-- Não coloque tokens em código.
-- Não suba `bot/.env` para GitHub.
-- Antes de produção, regenere o token do Telegram no BotFather se ele já foi colado em chat, print ou documento.
-- Troque `MP_USE_SANDBOX=false` quando usar o access token de produção do Mercado Pago.
+- Não suba `.env` para GitHub.
+- Não exponha o caminho direto do PDF.
+- Use a assinatura secreta do webhook quando estiver disponível.
+- Mantenha `PRODUCT_PRICE=8.99` com ponto.

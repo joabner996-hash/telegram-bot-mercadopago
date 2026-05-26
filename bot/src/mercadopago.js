@@ -29,6 +29,8 @@ class MercadoPagoClient {
     productPrice,
     productCurrency,
     publicBaseUrl,
+    buyerName,
+    buyerEmail,
     telegramUserId,
     telegramChatId,
   }) {
@@ -47,9 +49,12 @@ class MercadoPagoClient {
       external_reference: externalReference,
       metadata: {
         order_id: orderId,
-        telegram_user_id: String(telegramUserId),
-        telegram_chat_id: String(telegramChatId),
+        buyer_name: buyerName || "",
+        buyer_email: buyerEmail || "",
+        telegram_user_id: telegramUserId ? String(telegramUserId) : "",
+        telegram_chat_id: telegramChatId ? String(telegramChatId) : "",
       },
+      payer: buyerEmail ? { name: buyerName || undefined, email: buyerEmail } : undefined,
       notification_url: `${publicBaseUrl}/webhooks/mercadopago`,
       back_urls: {
         success: `${publicBaseUrl}/obrigado?order_id=${encodeURIComponent(orderId)}`,

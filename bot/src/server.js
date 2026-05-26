@@ -1,13 +1,16 @@
 const fs = require("node:fs");
+const crypto = require("node:crypto");
 const express = require("express");
 const { config } = require("./config");
 const { MercadoPagoClient, externalReference, newOrderId, notificationType, paymentIdFromNotification, verifyWebhookSignature } = require("./mercadopago");
 const { deliveryCaption, paymentCreated, pendingStatus, welcome } = require("./messages");
+const { checkoutErrorPage, homePage, missingOrderPage, orderPage } = require("./pages");
 const { OrderStore } = require("./store");
 const { TelegramClient, buyKeyboard, startKeyboard } = require("./telegram");
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: false }));
 
 const store = new OrderStore(config.dataPath);
 const telegram = new TelegramClient(config.telegramToken);
@@ -22,6 +25,51 @@ function requirePublicUrl() {
 function checkoutUrlFromPreference(preference) {
   if (config.mercadoPagoSandbox) return preference.sandbox_init_point || preference.init_point;
   return preference.init_point || preference.sandbox_init_point;
+}
+
+function render(res, page) {
+  res.status(page.status || 200).type("html").send(page.html);
+}
+
+function validEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
+}
+
+function downloadToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+async function createWebOrder({ name, email }) {
+  requirePublicUrl();
+
+  const orderId = newOrderId();
+  const externalRef = externalReference(orderId);
+  const token = downloadToken();
+  const preference = await mercadoPago.createPreference({
+    orderId,
+    externalReference: externalRef,
+    productName: config.productName,
+    productPrice: config.productPrice,
+    productCurrency: config.productCurrency,
+    publicBaseUrl: config.publicBaseUrl,
+    buyerName: name,
+    buyerEmail: email,
+  });
+  const checkoutUrl = checkoutUrlFromPreference(preference);
+
+  return store.upsert({
+    orderId,
+    externalReference: externalRef,
+    preferenceId: preference.id,
+    checkoutUrl,
+    buyerName: name,
+    buyerEmail: email,
+    downloadToken: token,
+    paymentStatus: "created",
+    productName: config.productName,
+    productPrice: config.productPrice,
+    productCurrency: config.productCurrency,
+  });
 }
 
 async function createOrderForTelegramUser({ userId, chatId }) {
@@ -56,7 +104,7 @@ async function createOrderForTelegramUser({ userId, chatId }) {
 }
 
 async function deliverOrder(order) {
-  if (!order || order.deliveredAt) return order;
+  if (!order || order.deliveredAt || !order.telegramChatId) return order;
   if (!fs.existsSync(config.ebookPath)) {
     throw new Error(`PDF nao encontrado em ${config.ebookPath}`);
   }
@@ -185,7 +233,41 @@ async function processPayment(paymentId) {
 }
 
 app.get("/", (_req, res) => {
-  res.type("text/plain").send("MSCoz bot online");
+  render(res, homePage(config));
+});
+
+app.post("/comprar", async (req, res) => {
+  const name = String(req.body.name || "").trim();
+  const email = String(req.body.email || "").trim().toLowerCase();
+
+  if (!name || !validEmail(email)) {
+    render(res, checkoutErrorPage("Informe nome e e-mail validos para iniciar a compra."));
+    return;
+  }
+
+  try {
+    const order = await createWebOrder({ name, email });
+    res.redirect(order.checkoutUrl);
+  } catch (error) {
+    console.error("Erro ao criar compra web", error);
+    render(res, checkoutErrorPage("Nao consegui gerar o pagamento agora. Confira as configuracoes do Mercado Pago e tente novamente."));
+  }
+});
+
+app.post("/recuperar", (req, res) => {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  if (!validEmail(email)) {
+    render(res, checkoutErrorPage("Informe um e-mail valido para recuperar o acesso."));
+    return;
+  }
+
+  const order = store.latestByEmail(email);
+  if (!order) {
+    render(res, missingOrderPage());
+    return;
+  }
+
+  res.redirect(`/pedido/${encodeURIComponent(order.orderId)}`);
 });
 
 app.get("/health", (_req, res) => {
@@ -200,12 +282,40 @@ app.get("/health", (_req, res) => {
 });
 
 app.get(["/obrigado", "/pendente", "/falhou"], (req, res) => {
-  const status = req.path.includes("obrigado")
-    ? "Obrigado pela compra. Assim que o pagamento for aprovado, o bot envia o PDF no Telegram."
-    : req.path.includes("pendente")
-      ? "Pagamento pendente. Volte ao Telegram; o bot enviara o PDF quando aprovar."
-      : "Pagamento nao concluido. Volte ao Telegram para gerar um novo link.";
-  res.type("html").send(`<!doctype html><html lang="pt-BR"><meta charset="utf-8"><body><h1>${status}</h1><p>Pode fechar esta pagina e voltar ao bot.</p></body></html>`);
+  const order = store.get(req.query.order_id);
+  if (!order) {
+    render(res, missingOrderPage());
+    return;
+  }
+  render(res, orderPage({ order, config, downloadToken: order.downloadToken }));
+});
+
+app.get("/pedido/:orderId", (req, res) => {
+  const order = store.get(req.params.orderId);
+  if (!order) {
+    render(res, missingOrderPage());
+    return;
+  }
+  render(res, orderPage({ order, config, downloadToken: order.downloadToken }));
+});
+
+app.get("/download/:token", (req, res) => {
+  const order = store.getByDownloadToken(req.params.token);
+  if (!order || order.paymentStatus !== "approved" || !order.validAmount) {
+    render(res, missingOrderPage());
+    return;
+  }
+  if (!fs.existsSync(config.ebookPath)) {
+    render(res, checkoutErrorPage("O arquivo do ebook nao foi encontrado no servidor. Entre em contato com o suporte."));
+    return;
+  }
+
+  store.update(order.orderId, {
+    downloadedAt: new Date().toISOString(),
+    downloadCount: Number(order.downloadCount || 0) + 1,
+  });
+
+  res.download(config.ebookPath, "manual-sobrevivencia-edicao-cozinha.pdf");
 });
 
 app.post(`/telegram/${config.telegramWebhookSecret}`, async (req, res) => {

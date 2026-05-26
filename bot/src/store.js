@@ -41,9 +41,20 @@ class OrderStore {
     return this.data.orders.find((order) => order.preferenceId === preferenceId);
   }
 
+  getByDownloadToken(downloadToken) {
+    return this.data.orders.find((order) => order.downloadToken === downloadToken);
+  }
+
   latestByTelegramUser(telegramUserId) {
     return [...this.data.orders]
       .filter((order) => String(order.telegramUserId) === String(telegramUserId))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+  }
+
+  latestByEmail(email) {
+    const normalized = String(email || "").trim().toLowerCase();
+    return [...this.data.orders]
+      .filter((order) => String(order.buyerEmail || "").trim().toLowerCase() === normalized)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
   }
 
