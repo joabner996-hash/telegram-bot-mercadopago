@@ -1,0 +1,13 @@
+{
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "pdfkit": "^0.18.0"
+  },
+  "scripts": {
+    "bot": "node bot/src/server.js",
+    "bot:setup-webhook": "node bot/scripts/set-telegram-webhook.js",
+    "bot:check-webhook": "node bot/scripts/check-telegram-webhook.js",
+    "bot:delete-webhook": "node bot/scripts/delete-telegram-webhook.js"
+  }
+}

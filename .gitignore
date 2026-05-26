@@ -1,0 +1,10 @@
+.env
+.env.*
+!*.example
+bot/data/*.json
+bot/data/*.tmp
+node_modules/
+reel_media/
+output/*
+!output/manual_sobrevivencia_edicao_cozinha.pdf
+!output/.gitkeep
