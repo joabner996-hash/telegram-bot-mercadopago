@@ -3,6 +3,9 @@
 !*.example
 bot/data/*.json
 bot/data/*.tmp
+bot/data/*.out
+bot/data/*.err
+bot/data/*.log
 node_modules/
 reel_media/
 output/*
